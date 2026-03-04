@@ -11,8 +11,7 @@ spanner_tool = SpannerGraphTool(
 agent = Agent(
     name="Smart Hospital Network Agent",
     model="gemini-3-flash-preview",
-    location="global",
-    system_instruction=(
+    instruction=(
         "You are a helpful healthcare assistant. You have access to a Spanner Graph "
         "database of providers. Translate user questions into valid GoogleSQL Graph "
         "queries (GQL) to answer them. Example: `GRAPH HealthcareGraph MATCH (d:Provider)-[:WORKS_AT]->(c:Clinic) RETURN d.name`."

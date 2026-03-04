@@ -1,5 +1,5 @@
 import os
-from google.cloud import spanner
+from google.cloud import spanner  # type: ignore
 
 def create_database(instance_id, database_id, project_id=None):
     spanner_client = spanner.Client(project=project_id)

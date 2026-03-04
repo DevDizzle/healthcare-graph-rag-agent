@@ -1,5 +1,5 @@
-from google.cloud import spanner
-from typing import List, Dict, Any
+from google.cloud import spanner  # type: ignore
+from typing import List, Dict, Any, Optional
 
 class SpannerGraphTool:
     """
@@ -19,7 +19,7 @@ class SpannerGraphTool:
     - Example: `GRAPH HealthcareGraph MATCH (d:Provider)-[:WORKS_AT]->(c:Clinic) RETURN d.name, c.name`
     """
     
-    def __init__(self, instance_id: str, database_id: str, project_id: str = None):
+    def __init__(self, instance_id: str, database_id: str, project_id: Optional[str] = None):
         self.client = spanner.Client(project=project_id)
         self.instance = self.client.instance(instance_id)
         self.database = self.instance.database(database_id)
