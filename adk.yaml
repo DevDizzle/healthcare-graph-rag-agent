@@ -1,0 +1,5 @@
+agent:
+  name: "Smart Hospital Network Agent"
+  description: "An agent that helps users find providers and clinics using Spanner Graph."
+  version: "1.0.0"
+  entrypoint: "agent.network_agent:agent"
