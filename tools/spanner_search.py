@@ -5,7 +5,7 @@ class SpannerGraphTool:
     """
     Tool to execute GQL (Graph Query Language) queries against Google Spanner Graph.
     
-    The schema of the healthcare network graph is as follows:
+    The schema of the healthcare network graph (Graph Name: 'HealthcareGraph') is:
     - Nodes:
         - `Provider` (properties: id, name, bio)
         - `Clinic` (properties: id, name)
@@ -14,13 +14,14 @@ class SpannerGraphTool:
         - `WORKS_AT` (From Provider to Clinic)
         - `AFFILIATED_WITH` (From Clinic to Hospital)
         
-    Example GQL Query:
-    GRAPH FinGraph MATCH (d:Provider)-[:WORKS_AT]->(c:Clinic) RETURN d.name, c.name
+    Usage:
+    - The query MUST start with 'GRAPH HealthcareGraph ...'
+    - Example: `GRAPH HealthcareGraph MATCH (d:Provider)-[:WORKS_AT]->(c:Clinic) RETURN d.name, c.name`
     """
     
     def __init__(self, instance_id: str, database_id: str, project_id: str = None):
-        self.spanner_client = spanner.Client(project=project_id)
-        self.instance = self.spanner_client.instance(instance_id)
+        self.client = spanner.Client(project=project_id)
+        self.instance = self.client.instance(instance_id)
         self.database = self.instance.database(database_id)
 
     def execute_gql(self, query: str) -> List[Dict[str, Any]]:
@@ -28,19 +29,25 @@ class SpannerGraphTool:
         Executes a GQL query against the Spanner Graph database.
         
         Args:
-            query (str): The GQL query string.
+            query (str): The GQL query string. MUST start with 'GRAPH HealthcareGraph'.
             
         Returns:
-            List[Dict[str, Any]]: The results of the query.
+            List[Dict[str, Any]]: A list of dictionaries representing the graph results.
         """
         results = []
         try:
+            # Use a read-only snapshot for consistency and performance
             with self.database.snapshot() as snapshot:
-                # GQL is executed via the execute_sql method
                 results_iterator = snapshot.execute_sql(query)
+                
+                # Iterate and convert rows to dicts
                 for row in results_iterator:
-                    row_dict = dict(zip([col.name for col in results_iterator.fields], row))
-                    results.append(row_dict)
+                    # Dynamically map field names to values
+                    # 'fields' is available on the iterator after the first read
+                    columns = [field.name for field in results_iterator.fields]
+                    results.append(dict(zip(columns, row)))
+                    
             return results
         except Exception as e:
-            return [{"error": str(e)}]
+            # Return the error to the LLM so it can fix its query
+            return [{"error": f"Query execution failed: {str(e)}"}]

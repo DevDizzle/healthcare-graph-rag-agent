@@ -15,7 +15,7 @@ agent = Agent(
     system_instruction=(
         "You are a helpful healthcare assistant. You have access to a Spanner Graph "
         "database of providers. Translate user questions into valid GoogleSQL Graph "
-        "queries (GQL) to answer them. Example: `GRAPH FinGraph MATCH (d:Provider)-[:WORKS_AT]->(c:Clinic) RETURN d.name`."
+        "queries (GQL) to answer them. Example: `GRAPH HealthcareGraph MATCH (d:Provider)-[:WORKS_AT]->(c:Clinic) RETURN d.name`."
     ),
     tools=[spanner_tool.execute_gql]
 )

@@ -16,9 +16,9 @@ The Agent translates these natural language queries into executable **GQL (Graph
 
 This project showcases modern, cloud-native agentic development using the latest Google technologies:
 
-*   **Google Agent Development Kit (ADK):** The core orchestrator (Python) that manages the Gemini 1.5 Pro model, system instructions, and tool calling.
+*   **Google Agent Development Kit (ADK):** The core orchestrator (Python) that manages the Gemini 3 Flash model, system instructions, and tool calling.
 *   **Google Spanner Graph:** A horizontally scalable, globally consistent database with native graph capabilities. We use the emerging **GoogleSQL Graph (GQL)** syntax to map Nodes (`Provider`, `Clinic`, `Hospital`) and Edges (`WORKS_AT`, `AFFILIATED_WITH`).
-*   **Gemini 1.5 Pro:** The underlying LLM powering the agent's reasoning. It dynamically maps user intent to the database schema exposed via the tool's docstrings.
+*   **Gemini 3 Flash:** The underlying LLM powering the agent's reasoning. It dynamically maps user intent to the database schema exposed via the tool's docstrings.
 *   **Google Cloud Run:** (Targeted) The serverless compute platform to host the containerized ADK backend.
 *   **React + Vite (Frontend):** A fast, lightweight, and modern chat interface for users to interact with the backend agent.
 *   **GitHub Actions (CI/CD):** Automated pipelines for linting (`flake8`) and type checking (`mypy`) the Python codebase, ensuring robust, production-ready code.
