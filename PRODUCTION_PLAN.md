@@ -14,6 +14,17 @@ The NPPES provides data in two ways: a real-time API (limited to 200 results per
     *   Map the flat CSV rows to our Graph schema:
         *   **Nodes:** Extract `Provider` (NPI, Name, Credentials), `Clinic` (Practice Location Address), and `Hospital` (if affiliated via secondary APIs or organizational NPIs).
         *   **Edges:** Create `WORKS_AT` edges linking the Provider NPI to their practice location.
+
+### Expanded Graph Schema (NPPES Potential)
+The NPPES bulk CSV contains hundreds of columns that allow for a much richer graph than our mock data. We can add new nodes and edges such as:
+*   **Node: `Specialty/Taxonomy`**: Providers have primary and secondary taxonomy codes.
+    *   *Edge:* `HAS_SPECIALTY` (Provider -> Taxonomy). This allows queries like *"Find me all cardiologists in NY."*
+*   **Node: `Organization/Entity`**: Entity Type 2 NPIs represent organizations rather than individuals.
+    *   *Edge:* `AFFILIATED_WITH` or `PART_OF` (Individual Provider [Type 1] -> Organization [Type 2]).
+*   **Node: `Location/State`**: Geocoding the practice addresses.
+    *   *Edge:* `LOCATED_IN` (Clinic/Organization -> State/City).
+*   **Node: `Identifier/Issuer`**: Providers often list other state licenses or Medicare/Medicaid IDs.
+    *   *Edge:* `HOLDS_LICENSE` (Provider -> State License).
 *   **Load Phase (Spanner):** Use the Spanner batch mutation API (similar to our current `seed_spanner.py`, but optimized for millions of rows) to write the transformed nodes and edges into the Spanner Graph tables.
 
 ## 2. Real-Time Data Augmentation (Optional)
