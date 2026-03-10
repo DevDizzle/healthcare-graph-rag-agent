@@ -1,4 +1,6 @@
 google-adk
 google-cloud-spanner
 uvicorn
-streamlit\nrequests
+fastapi
+streamlit
+requests

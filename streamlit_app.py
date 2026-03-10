@@ -24,10 +24,14 @@ if prompt := st.chat_input("e.g. Which clinics is Dr. Provider 1 affiliated with
 
     with st.spinner("Agent is thinking..."):
         try:
-            # Assuming your ADK backend is running on port 8000 (e.g. via `adk web` or a custom FastAPI wrapper)
+            # Get configuration from secrets, with a local fallback
+            backend_url = st.secrets.get("BACKEND_URL", "http://localhost:8000/chat")
+            api_key = st.secrets.get("API_KEY", "default-dev-key")
+            
             response = requests.post(
-                "http://localhost:8000/chat",
-                json={"message": prompt}
+                backend_url,
+                json={"message": prompt},
+                headers={"X-API-Key": api_key}
             )
             response.raise_for_status()
             data = response.json()
