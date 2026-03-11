@@ -7,16 +7,18 @@ class SpannerGraphTool:
     
     The schema of the healthcare network graph (Graph Name: 'HealthcareGraph') is:
     - Nodes:
-        - `Provider` (properties: id, name, bio)
-        - `Clinic` (properties: id, name)
-        - `Hospital` (properties: id, name)
+        - `Provider` (properties: npi, name, credential, medicare_assignment)
+        - `Organization` (properties: npi, name)
+        - `Location` (properties: location_id, city, state, address)
+        - `Specialty` (properties: name)
     - Edges:
-        - `WORKS_AT` (From Provider to Clinic)
-        - `AFFILIATED_WITH` (From Clinic to Hospital)
+        - `PRACTICES_AT` (From Provider to Location)
+        - `LOCATED_IN` (From Organization to Location)
+        - `HAS_SPECIALTY` (From Provider to Specialty)
         
     Usage:
     - The query MUST start with 'GRAPH HealthcareGraph ...'
-    - Example: `GRAPH HealthcareGraph MATCH (d:Provider)-[:WORKS_AT]->(c:Clinic) RETURN d.name, c.name`
+    - Example: `GRAPH HealthcareGraph MATCH (p:Provider)-[:PRACTICES_AT]->(l:Location) RETURN p.name, l.address`
     """
     
     def __init__(self, instance_id: str, database_id: str, project_id: Optional[str] = None):

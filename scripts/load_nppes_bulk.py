@@ -1,20 +1,20 @@
 import os
-import zipfile
-import io
 import csv
+import json
+import urllib.request
 from google.cloud import spanner
 
 def create_schema(instance_id, database_id, project_id):
     spanner_client = spanner.Client(project=project_id)
     instance = spanner_client.instance(instance_id)
     
-    # We drop the old schema if needed, but here we assume a fresh DB
     ddl_statements = [
         """
         CREATE TABLE Provider (
             npi INT64 NOT NULL,
             name STRING(MAX),
-            credential STRING(MAX)
+            credential STRING(MAX),
+            medicare_assignment STRING(MAX)
         ) PRIMARY KEY (npi)
         """,
         """
@@ -30,6 +30,11 @@ def create_schema(instance_id, database_id, project_id):
             state STRING(MAX),
             address STRING(MAX)
         ) PRIMARY KEY (location_id)
+        """,
+        """
+        CREATE TABLE Specialty (
+            name STRING(MAX) NOT NULL
+        ) PRIMARY KEY (name)
         """,
         """
         CREATE TABLE PracticesAt (
@@ -48,11 +53,20 @@ def create_schema(instance_id, database_id, project_id):
         ) PRIMARY KEY (org_npi, location_id)
         """,
         """
+        CREATE TABLE HasSpecialty (
+            provider_npi INT64 NOT NULL,
+            specialty_name STRING(MAX) NOT NULL,
+            FOREIGN KEY (provider_npi) REFERENCES Provider(npi),
+            FOREIGN KEY (specialty_name) REFERENCES Specialty(name)
+        ) PRIMARY KEY (provider_npi, specialty_name)
+        """,
+        """
         CREATE PROPERTY GRAPH HealthcareGraph
         NODE TABLES (
             Provider,
             Organization,
-            Location
+            Location,
+            Specialty
         )
         EDGE TABLES (
             PracticesAt
@@ -62,7 +76,11 @@ def create_schema(instance_id, database_id, project_id):
             LocatedIn
                 SOURCE KEY (org_npi) REFERENCES Organization(npi)
                 DESTINATION KEY (location_id) REFERENCES Location(location_id)
-                LABEL LOCATED_IN
+                LABEL LOCATED_IN,
+            HasSpecialty
+                SOURCE KEY (provider_npi) REFERENCES Provider(npi)
+                DESTINATION KEY (specialty_name) REFERENCES Specialty(name)
+                LABEL HAS_SPECIALTY
         )
         """
     ]
@@ -77,22 +95,40 @@ def create_schema(instance_id, database_id, project_id):
         print(f"Schema creation failed (might already exist): {e}")
 
 
+def fetch_cms_data(npi_list):
+    """Fetches Medicare Assignment and Specialty from CMS Provider Data API for a list of NPIs."""
+    results = {}
+    chunk_size = 50
+    for i in range(0, len(npi_list), chunk_size):
+        chunk = npi_list[i:i+chunk_size]
+        npi_filter = ",".join(chunk)
+        url = f"https://data.cms.gov/provider-data/api/1/datastore/query/mj5m-pzi6/0?filter[npi]={npi_filter}&limit=100"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req) as response:
+                data = json.loads(response.read().decode())
+                for row in data.get("results", []):
+                    npi = int(row.get("npi"))
+                    assgn = row.get("ind_assgn")
+                    spec = row.get("pri_spec")
+                    results[npi] = {"assignment": assgn, "specialty": spec}
+        except Exception as e:
+            print("CMS API fetch failed:", e)
+    return results
+
+
 def load_nppes_data(instance_id, database_id, project_id, csv_path=None, limit=None):
-    """
-    Reads the NPPES CSV file and batch inserts it into Spanner.
-    Because the file is 4GB+, we stream it and commit in batches of 1000.
-    """
     spanner_client = spanner.Client(project=project_id)
     instance = spanner_client.instance(instance_id)
     database = instance.database(database_id)
     
     if not csv_path:
-        print("Please download the Monthly Full Replacement NPI File from https://download.cms.gov/nppes/NPI_Files.html, extract the CSV, and provide its path.")
+        print("Please provide the path to the NPPES CSV file.")
         return
 
     print(f"Starting bulk load from {csv_path}...")
     
-    providers = []
+    providers_raw = []
     orgs = []
     locations = []
     practices = []
@@ -114,7 +150,6 @@ def load_nppes_data(instance_id, database_id, project_id, csv_path=None, limit=N
             address = row.get('Provider First Line Business Practice Location Address', '')
             location_id = f"{address}_{city}_{state}".replace(" ", "_").upper()
             
-            # Add to locations if we have an address
             if location_id and location_id != "__":
                 locations.append((location_id, city, state, address))
             
@@ -122,7 +157,7 @@ def load_nppes_data(instance_id, database_id, project_id, csv_path=None, limit=N
                 first = row.get('Provider First Name', '')
                 last = row.get('Provider Last Name (Legal Name)', '')
                 cred = row.get('Provider Credential Text', '')
-                providers.append((npi, f"{first} {last}".strip(), cred))
+                providers_raw.append((npi, f"{first} {last}".strip(), cred))
                 
                 if location_id and location_id != "__":
                     practices.append((npi, location_id))
@@ -136,20 +171,49 @@ def load_nppes_data(instance_id, database_id, project_id, csv_path=None, limit=N
                     
             count += 1
             if count % batch_size == 0:
-                _commit_batch(database, providers, orgs, locations, practices, located_in)
-                providers, orgs, locations, practices, located_in = [], [], [], [], []
+                _commit_batch(database, providers_raw, orgs, locations, practices, located_in)
+                providers_raw, orgs, locations, practices, located_in = [], [], [], [], []
                 print(f"Processed {count} rows...")
                 
             if limit and count >= limit:
                 break
                 
-    # Commit final batch
-    _commit_batch(database, providers, orgs, locations, practices, located_in)
+    _commit_batch(database, providers_raw, orgs, locations, practices, located_in)
     print(f"Finished loading {count} records!")
 
-def _commit_batch(database, providers, orgs, locations, practices, located_in):
-    # De-duplicate locations within the batch
+
+def _commit_batch(database, providers_raw, orgs, locations, practices, located_in):
     unique_locations = list({loc[0]: loc for loc in locations}.values())
+    
+    npi_list = [str(p[0]) for p in providers_raw]
+    cms_data = fetch_cms_data(npi_list) if npi_list else {}
+    
+    providers = []
+    specialties = []
+    has_specialty = []
+    
+    for npi, name, cred in providers_raw:
+        cms_info = cms_data.get(npi, {})
+        assgn_raw = cms_info.get("assignment", "")
+        
+        if assgn_raw == "Y":
+            assignment = "Participating"
+        elif assgn_raw in ["N", "M"]:
+            assignment = "Non-Participating"
+        else:
+            assignment = "Unknown"
+            
+        providers.append((npi, name, cred, assignment))
+        
+        spec_name = cms_info.get("specialty")
+        if spec_name:
+            # Capitalize each word for cleaner strings (e.g. OPHTHALMOLOGY -> Ophthalmology)
+            spec_name = spec_name.title()
+            specialties.append((spec_name,))
+            has_specialty.append((npi, spec_name))
+            
+    # Deduplicate specialties
+    unique_specialties = list({s[0]: s for s in specialties}.values())
     
     def insert_mutations(transaction):
         if unique_locations:
@@ -158,10 +222,16 @@ def _commit_batch(database, providers, orgs, locations, practices, located_in):
                 columns=('location_id', 'city', 'state', 'address'),
                 values=unique_locations
             )
+        if unique_specialties:
+            transaction.insert_or_update(
+                table='Specialty',
+                columns=('name',),
+                values=unique_specialties
+            )
         if providers:
             transaction.insert_or_update(
                 table='Provider',
-                columns=('npi', 'name', 'credential'),
+                columns=('npi', 'name', 'credential', 'medicare_assignment'),
                 values=providers
             )
         if orgs:
@@ -182,8 +252,14 @@ def _commit_batch(database, providers, orgs, locations, practices, located_in):
                 columns=('org_npi', 'location_id'),
                 values=located_in
             )
+        if has_specialty:
+            transaction.insert_or_update(
+                table='HasSpecialty',
+                columns=('provider_npi', 'specialty_name'),
+                values=has_specialty
+            )
             
-    if any([unique_locations, providers, orgs, practices, located_in]):
+    if any([unique_locations, providers, orgs, practices, located_in, unique_specialties, has_specialty]):
         database.run_in_transaction(insert_mutations)
 
 

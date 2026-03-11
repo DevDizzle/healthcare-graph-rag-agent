@@ -1,0 +1,6 @@
+NPI,Entity Type Code,Provider First Name,Provider Last Name (Legal Name),Provider Credential Text,Provider Business Practice Location Address City Name,Provider Business Practice Location Address State Name,Provider First Line Business Practice Location Address,Provider Organization Name (Legal Business Name)
+1003000126,1,ARDALAN,ENKESHAFI,MD,SAINT AUGUSTINE,FL,123 MAIN ST,
+1003001843,1,JOHN,DOE,DO,SAINT AUGUSTINE,FL,456 PINE AVE,
+9999999999,1,JANE,SMITH,MD,SAINT AUGUSTINE,FL,789 PALM BLVD,
+1003000142,2,,,,SAINT AUGUSTINE,FL,321 OAK ST,RIVER CLINIC LLC
+1104111988,1,KATHLEEN,KREPLEY,MD,SAINT AUGUSTINE,FL,100 WHETSTONE PLACE,

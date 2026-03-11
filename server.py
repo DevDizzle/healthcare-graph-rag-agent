@@ -3,13 +3,23 @@ from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel
 import asyncio
 import os
+import uuid
+import traceback
 from agent.network_agent import agent
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from google.adk.apps import App
+from google.genai.types import Content, Part
 
 app = FastAPI(title="Smart Hospital Network Agent API")
 
 API_KEY = os.environ.get("API_KEY", "default-dev-key")
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+# Initialize ADK App and Session Service
+adk_app = App(name="hospital_app", root_agent=agent)
+session_svc = InMemorySessionService()
 
 async def get_api_key(api_key_header: str = Depends(api_key_header)):
     if api_key_header == API_KEY:
@@ -26,10 +36,27 @@ class ChatResponse(BaseModel):
 @app.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(request: ChatRequest, api_key: str = Depends(get_api_key)):
     try:
-        # Run the synchronous agent call in a thread pool
-        response = await asyncio.to_thread(agent.chat, request.message)
-        return ChatResponse(reply=response.text)
+        session_id = str(uuid.uuid4())
+        await session_svc.create_session(app_name="hospital_app", user_id="user", session_id=session_id)
+        runner = Runner(app=adk_app, session_service=session_svc)
+        
+        message = Content(role="user", parts=[Part.from_text(text=request.message)])
+        response_generator = runner.run_async(user_id="user", session_id=session_id, new_message=message)
+        
+        full_text = ""
+        async for event in response_generator:
+            if getattr(event, "content", None) and getattr(event.content, "parts", None):
+                for part in event.content.parts:
+                    if part.text:
+                        full_text += part.text
+                        
+        if not full_text:
+            full_text = "Sorry, I could not generate a response."
+            
+        return ChatResponse(reply=full_text)
     except Exception as e:
+        print(f"Error during chat: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
