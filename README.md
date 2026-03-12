@@ -16,18 +16,24 @@ The Agent translates these natural language queries into executable **GQL (Graph
 
 This project showcases modern, cloud-native agentic development using the latest Google technologies:
 
-*   **Google Agent Development Kit (ADK):** The core orchestrator (Python) that manages the Gemini 3 Flash model, system instructions, and tool calling.
-*   **Google Spanner Graph:** A horizontally scalable, globally consistent database with native graph capabilities. We use the emerging **GoogleSQL Graph (GQL)** syntax to map Nodes (`Provider`, `Clinic`, `Hospital`) and Edges (`WORKS_AT`, `AFFILIATED_WITH`).
-*   **Gemini 3 Flash:** The underlying LLM powering the agent's reasoning. It dynamically maps user intent to the database schema exposed via the tool's docstrings.
-*   **Google Cloud Run:** (Targeted) The serverless compute platform to host the containerized ADK backend.
+*   **Google Agent Development Kit (ADK):** The core orchestrator (Python) that manages the Gemini model, system instructions, and tool calling via Vertex AI.
+*   **Google Spanner Graph:** A horizontally scalable, globally consistent database with native graph capabilities. We use **GoogleSQL Graph (GQL)** to map Nodes (`Provider`, `Specialty`, `Location`) and Edges (`WORKS_AT`, `HAS_SPECIALTY`).
+*   **Gemini 2.5 Flash:** The underlying LLM powering the agent's reasoning. It dynamically maps user intent to the database schema exposed via the tool's docstrings.
+*   **Google Cloud Run:** The serverless compute platform hosting the containerized ADK backend API.
 *   **Streamlit (Frontend):** A fast, lightweight, and modern chat interface for users to interact with the backend agent.
-*   **GitHub Actions (CI/CD):** Automated pipelines for linting (`flake8`) and type checking (`mypy`) the Python codebase, ensuring robust, production-ready code.
 
 ## 🧠 Architecture Highlights
 
-1.  **Agentic Tool Use:** The agent is given a specific tool (`SpannerGraphTool`). The magic happens in the tool's Python docstring, where the exact graph schema (nodes, properties, edges) is defined. The LLM reads this "contract" and uses it to construct precise GQL queries.
-2.  **Deterministic Data Retrieval:** Unlike standard RAG that relies entirely on vector embeddings and semantic similarity (which can hallucinate or miss exact matches), *Graph RAG* executes deterministic queries against the database, returning 100% accurate factual data from the graph to the LLM for formatting.
-3.  **Schema Enforcement:** The automated CI/CD pipeline ensures that the Python types, especially the interaction boundaries between the agent and the Spanner tool, remain strict.
+1.  **Deterministic Graph Retrieval:** Unlike standard RAG that relies entirely on vector embeddings and semantic similarity (which can hallucinate or miss exact matches), *Graph RAG* executes deterministic queries against the Spanner database.
+2.  **Real-Time API Fallback & Joins:** When a provider isn't found in the local graph, the agent automatically falls back to querying the national **NPPES API**. Behind the scenes, the agent performs a real-time join against the **CMS Provider Data API** to enrich the NPPES data with live "Medicare Assignment" financial status.
+3.  **Visible Retrieval Tracing:** The Streamlit UI features an expandable "Retrieval Trace" panel, allowing interviewers and engineers to instantly verify *how* the agent acquired its data (e.g., whether it fired a GQL query or executed a real-time API join).
+
+## 🌟 Example Queries
+
+Try these prompts in the demo to see the agent's reasoning and retrieval in action:
+*   *"Find me a doctor named Ardalan Enkeshafi."* -> **Tests Spanner Graph Retrieval**
+*   *"Find me an eye doctor in Saint Augustine, FL. What is their medicare status?"* -> **Tests Real-Time Fallback & CMS Joining**
+*   *"I need a Family Medicine doctor in Chicago."* -> **Tests Fallback & Patient Financial Education Mandate**
 
 ## 📂 Project Structure
 

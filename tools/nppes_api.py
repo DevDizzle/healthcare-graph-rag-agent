@@ -1,4 +1,6 @@
 import requests
+import json
+import urllib.request
 from typing import List, Dict, Any
 
 class NppesApiTool:
@@ -10,6 +12,38 @@ class NppesApiTool:
     be in the local graph.
     """
     
+    def _fetch_cms_medicare_status(self, npi_list: List[str]) -> Dict[str, str]:
+        """Helper to fetch Medicare Assignment status from CMS API for a list of NPIs."""
+        if not npi_list:
+            return {}
+            
+        results = {}
+        # The CMS DKAN API does not reliably support 'IN' or multiple 'OR' conditions on the same field.
+        # We must fetch them individually to guarantee accuracy.
+        for npi in npi_list:
+            url = f"https://data.cms.gov/provider-data/api/1/datastore/query/mj5m-pzi6/0?conditions[0][property]=npi&conditions[0][value]={npi}&conditions[0][operator]=%3D"
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=3) as response:
+                    data = json.loads(response.read().decode())
+                    rows = data.get("results", [])
+                    if rows:
+                        # Grab the assignment status from the first matching row
+                        assgn_raw = rows[0].get("ind_assgn", "")
+                        if assgn_raw == "Y":
+                            results[str(npi)] = "Participating"
+                        elif assgn_raw in ["N", "M"]:
+                            results[str(npi)] = "Non-Participating"
+                        else:
+                            results[str(npi)] = "Unknown"
+                    else:
+                        results[str(npi)] = "Unknown"
+            except Exception as e:
+                print(f"Warning: CMS Medicare lookup failed for NPI {npi}: {e}")
+                results[str(npi)] = "Unknown"
+                
+        return results
+
     def search_nppes(self, first_name: str = "", last_name: str = "", organization_name: str = "", taxonomy_description: str = "", city: str = "", state: str = "", limit: int = 10) -> List[Dict[str, Any]]:
         """
         Searches the real-time NPPES API for providers or organizations.
@@ -51,8 +85,14 @@ class NppesApiTool:
             if "Errors" in data:
                 return [{"error": data["Errors"]}]
                 
-            results = []
+            npi_list = []
+            raw_results = []
+            
+            # First pass: parse NPPES and collect NPIs
             for item in data.get("results", []):
+                npi = str(item.get("number"))
+                npi_list.append(npi)
+                
                 basic = item.get("basic", {})
                 addresses = item.get("addresses", [])
                 taxonomies = item.get("taxonomies", [])
@@ -64,7 +104,7 @@ class NppesApiTool:
                 specialties = [tax.get("desc") for tax in taxonomies if tax.get("desc")]
                 
                 provider_info = {
-                    "npi": item.get("number"),
+                    "npi": npi,
                     "type": item.get("enumeration_type"), # NPI-1 or NPI-2
                     "name": f"{basic.get('first_name', '')} {basic.get('last_name', '')}".strip() if item.get("enumeration_type") == "NPI-1" else basic.get("organization_name", ""),
                     "credentials": basic.get("credential", ""),
@@ -73,8 +113,17 @@ class NppesApiTool:
                     "state": location.get("state", ""),
                     "address": location.get("address_1", "")
                 }
-                results.append(provider_info)
+                raw_results.append(provider_info)
                 
-            return results
+            # Second pass: fetch Medicare status and merge
+            cms_status_map = self._fetch_cms_medicare_status(npi_list)
+            
+            final_results = []
+            for provider in raw_results:
+                npi = provider["npi"]
+                provider["medicare_assignment"] = cms_status_map.get(npi, "Unknown")
+                final_results.append(provider)
+                
+            return final_results
         except requests.exceptions.RequestException as e:
             return [{"error": f"API request failed: {str(e)}"}]

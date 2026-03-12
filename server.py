@@ -44,16 +44,25 @@ async def chat_endpoint(request: ChatRequest, api_key: str = Depends(get_api_key
         response_generator = runner.run_async(user_id="user", session_id=session_id, new_message=message)
         
         full_text = ""
+        tool_traces = []
         async for event in response_generator:
             if getattr(event, "content", None) and getattr(event.content, "parts", None):
                 for part in event.content.parts:
                     if part.text:
                         full_text += part.text
+                    if part.function_call:
+                        tool_traces.append(f"Used tool: {part.function_call.name}")
+                        if part.function_call.name == "search_nppes":
+                             tool_traces.append("Real-Time Join: NPPES API -> CMS Medicare API")
+                        elif part.function_call.name == "execute_gql":
+                             tool_traces.append("Graph Search: Querying local Spanner Graph")
                         
         if not full_text:
             full_text = "Sorry, I could not generate a response."
             
-        return ChatResponse(reply=full_text)
+        trace_str = "\n".join(tool_traces) if tool_traces else "No external tools used."
+            
+        return ChatResponse(reply=full_text + "\n\n---\n**Retrieval Trace:**\n" + trace_str)
     except Exception as e:
         print(f"Error during chat: {e}")
         traceback.print_exc()

@@ -14,6 +14,9 @@ if "messages" not in st.session_state:
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        if message.get("trace"):
+            with st.expander("🔍 View Retrieval Trace (System Architecture)", expanded=False):
+                st.code(message["trace"], language="yaml")
 
 # React to user input
 if prompt := st.chat_input("e.g. Which clinics is Dr. Provider 1 affiliated with?"):
@@ -37,13 +40,29 @@ if prompt := st.chat_input("e.g. Which clinics is Dr. Provider 1 affiliated with
             data = response.json()
             
             # Parse response based on ADK's return payload
-            reply = data.get("reply") or data.get("response") or str(data)
+            raw_reply = data.get("reply") or data.get("response") or str(data)
+            
+            # Split the reply from the trace if it exists
+            if "---" in raw_reply and "**Retrieval Trace:**" in raw_reply:
+                parts = raw_reply.split("\n\n---\n**Retrieval Trace:**\n")
+                reply = parts[0]
+                trace = parts[1] if len(parts) > 1 else ""
+            else:
+                reply = raw_reply
+                trace = ""
             
         except Exception as e:
             reply = f"Error communicating with backend: {e}"
+            trace = ""
 
     # Display assistant response in chat message container
     with st.chat_message("assistant"):
         st.markdown(reply)
+        
+        # Display the Retrieval Trace as a clean expander or info box
+        if trace:
+            with st.expander("🔍 View Retrieval Trace (System Architecture)", expanded=False):
+                st.code(trace, language="yaml")
+                
     # Add assistant response to chat history
-    st.session_state.messages.append({"role": "assistant", "content": reply})
+    st.session_state.messages.append({"role": "assistant", "content": reply, "trace": trace})
