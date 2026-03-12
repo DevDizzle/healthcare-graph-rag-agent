@@ -24,7 +24,8 @@ class NppesApiTool:
             url = f"https://data.cms.gov/provider-data/api/1/datastore/query/mj5m-pzi6/0?conditions[0][property]=npi&conditions[0][value]={npi}&conditions[0][operator]=%3D"
             try:
                 req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-                with urllib.request.urlopen(req, timeout=3) as response:
+                # Increased timeout to 10 seconds to ensure CMS API responds reliably for the demo
+                with urllib.request.urlopen(req, timeout=10) as response:
                     data = json.loads(response.read().decode())
                     rows = data.get("results", [])
                     if rows:
