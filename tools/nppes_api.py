@@ -1,6 +1,7 @@
 import requests
 import json
 import urllib.request
+import concurrent.futures
 from typing import List, Dict, Any
 
 class NppesApiTool:
@@ -12,40 +13,45 @@ class NppesApiTool:
     be in the local graph.
     """
     
+    def _fetch_single_npi_status(self, npi: str) -> Dict[str, str]:
+        """Fetches status for a single NPI with timeout."""
+        url = f"https://data.cms.gov/provider-data/api/1/datastore/query/mj5m-pzi6/0?conditions[0][property]=npi&conditions[0][value]={npi}&conditions[0][operator]=%3D"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode())
+                rows = data.get("results", [])
+                if rows:
+                    assgn_raw = rows[0].get("ind_assgn", "")
+                    if assgn_raw == "Y":
+                        return {npi: "Participating"}
+                    elif assgn_raw in ["N", "M"]:
+                        return {npi: "Non-Participating"}
+        except Exception as e:
+            print(f"Warning: CMS Medicare lookup failed for NPI {npi}: {e}")
+        return {npi: "Unknown"}
+
     def _fetch_cms_medicare_status(self, npi_list: List[str]) -> Dict[str, str]:
-        """Helper to fetch Medicare Assignment status from CMS API for a list of NPIs."""
+        """Helper to fetch Medicare Assignment status in parallel."""
         if not npi_list:
             return {}
             
         results = {}
-        # The CMS DKAN API does not reliably support 'IN' or multiple 'OR' conditions on the same field.
-        # We must fetch them individually to guarantee accuracy.
-        for npi in npi_list:
-            url = f"https://data.cms.gov/provider-data/api/1/datastore/query/mj5m-pzi6/0?conditions[0][property]=npi&conditions[0][value]={npi}&conditions[0][operator]=%3D"
-            try:
-                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-                # Increased timeout to 10 seconds to ensure CMS API responds reliably for the demo
-                with urllib.request.urlopen(req, timeout=10) as response:
-                    data = json.loads(response.read().decode())
-                    rows = data.get("results", [])
-                    if rows:
-                        # Grab the assignment status from the first matching row
-                        assgn_raw = rows[0].get("ind_assgn", "")
-                        if assgn_raw == "Y":
-                            results[str(npi)] = "Participating"
-                        elif assgn_raw in ["N", "M"]:
-                            results[str(npi)] = "Non-Participating"
-                        else:
-                            results[str(npi)] = "Unknown"
-                    else:
-                        results[str(npi)] = "Unknown"
-            except Exception as e:
-                print(f"Warning: CMS Medicare lookup failed for NPI {npi}: {e}")
-                results[str(npi)] = "Unknown"
-                
+        # Limit enrichment to top 5 to keep response time fast for demo
+        npi_to_fetch = npi_list[:5]
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_npi = {executor.submit(self._fetch_single_npi_status, npi): npi for npi in npi_to_fetch}
+            for future in concurrent.futures.as_completed(future_to_npi):
+                try:
+                    res = future.result()
+                    results.update(res)
+                except Exception:
+                    pass
+                    
         return results
 
-    def search_nppes(self, first_name: str = "", last_name: str = "", organization_name: str = "", taxonomy_description: str = "", city: str = "", state: str = "", limit: int = 10) -> List[Dict[str, Any]]:
+    def search_nppes(self, first_name: str = "", last_name: str = "", organization_name: str = "", taxonomy_description: str = "", city: str = "", state: str = "", limit: int = 5) -> List[Dict[str, Any]]:
         """
         Searches the real-time NPPES API for providers or organizations.
         
@@ -56,7 +62,7 @@ class NppesApiTool:
             taxonomy_description (str): Provider specialty (e.g., 'Ophthalmology', 'Optometrist').
             city (str): Practice location city.
             state (str): Practice location state (2-letter abbreviation).
-            limit (int): Number of results to return (max 200).
+            limit (int): Number of results to return (max 200). Default 5 for demo performance.
             
         Returns:
             List[Dict[str, Any]]: A list of matching providers/organizations.
@@ -64,7 +70,7 @@ class NppesApiTool:
         base_url = "https://npiregistry.cms.hhs.gov/api/"
         params = {
             "version": "2.1",
-            "limit": min(limit, 200)
+            "limit": min(limit, 10) # Strictly limit for demo reliability
         }
         
         if first_name: params["first_name"] = first_name
