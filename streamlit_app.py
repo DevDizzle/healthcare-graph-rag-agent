@@ -4,7 +4,15 @@ import requests
 st.set_page_config(page_title="Smart Hospital Network Agent", page_icon="🏥")
 
 st.title("🏥 Smart Hospital Network Agent")
-st.markdown("Ask me about providers, clinics, and hospitals.")
+st.markdown("""
+**Your AI Patient Financial Advocate & Provider Navigator**
+
+This agent uses **Google Spanner Graph RAG** and real-time **CMS/NPPES API joins** to help you find in-network doctors. It is strictly mandated to educate patients on their financial responsibilities based on a doctor's **Medicare Assignment** status.
+
+*Try asking:*
+* *"Find an eye doctor in Saint Augustine, FL."*
+* *"I need a Family Medicine doctor in Miami."*
+""")
 
 # Initialize chat history
 if "messages" not in st.session_state:
